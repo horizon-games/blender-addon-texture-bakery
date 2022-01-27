@@ -1,10 +1,10 @@
 bl_info = {
     "name": "Texture Bakery",
     "author": "Timmith Dysinski",
-    "version": (1, 0, 0),
+    "version": (1, 0, 1),
     "blender": (2, 93, 0),
     "location": "Properties > Scene > Texture Bakery",
-    "description": "Help shortcut the rigorous process of baking textures with some helpful ui",
+    "description": "Helps shortcut the rigorous process of baking textures with some helpful UI",
     "warning": "",
     "doc_url": "",
     "category": "System",
@@ -14,19 +14,8 @@ bl_info = {
 import bpy
 from bpy.types import Operator
 
-import time
-import asyncio
-from bpy.app.handlers import persistent
 
-@persistent
-def BAKE(nodeGroup):
-    bpy.ops.object.bake(type='DIFFUSE')
-    print("{}'s Bake Complete".format(nodeGroup.nodes.active.name))
-    return
-
-@persistent
-def full_bake_script(self, context):
-    
+def setup():
     # Variable Setup
     nodeGroup = bpy.data.node_groups['NodeGroup.001']
     output = nodeGroup.nodes['Group Output']
@@ -39,16 +28,10 @@ def full_bake_script(self, context):
     rt_alpha = nodeGroup.nodes['Image Texture.004']
     alpha_img = bpy.data.images.get('rt-alpha')
 
-    #rt_rgb_filepath = "C:\\Users\\Timmith\\Desktop\\DevSpace\\~~Work~~\\SkyWeaver-art-world-building\\islands\\basic\\rt-rgb.png"
-    #rt_alpha_filepath = "C:\\Users\\Timmith\\Desktop\\DevSpace\\~~Work~~\\SkyWeaver-art-world-building\\islands\\basic\\rt-alpha.png"
-    result_filepath = "C:\\Users\\Timmith\\Desktop\\DevSpace\\~~Work~~\\SkyWeaver-art-world-building\\islands\\basic\\island-basic-final-texture.png"
+    result_filepath = bpy.data.images['island-basic-final-texture.png'].filepath_from_user()
 
     # Function Setup
     link = nodeGroup.links.new
-    
-    print("")
-    print("Starting Full Bake Process:")
-    print("")
     
     # Ensure that the UV Maps is set to 'export'
     bpy.data.meshes['Cube'].uv_layers.active_index = 0
@@ -59,12 +42,14 @@ def full_bake_script(self, context):
     for obj in bpy.data.objects:
         obj.select_set(False)
     bpy.data.objects['surface'].select_set(True)
-
-    # Ensure that Active Material Index to 'base'
-    #bpy.context.object.active_material_index = 0
-    print("Context: {}".format(context))
     
-    # Setup the bake and save the output, rt-rgb
+    # Ensure that Active Material Index is set to 'base'
+    bpy.data.objects['surface'].active_material_index = 0
+    
+    return nodeGroup, output, color, rt_rgb, rgb_img, alpha, rt_alpha, alpha_img, result_filepath, link
+
+
+def rgb_bake(link, color, output, nodeGroup, rt_rgb, rgb_img):
     link(color.outputs[0],output.inputs[0])
     nodeGroup.nodes.active.select = False
     nodeGroup.nodes.active = rt_rgb
@@ -72,21 +57,12 @@ def full_bake_script(self, context):
     print("rt-rgb Setup Complete, starting Bake...")
     BAKE(nodeGroup)
     rgb_img.save()
-    print("rt-rgb Image Saved")
-
-    # Wait for the oven to cool down
+    print("rt-rgb Image Saved.")
     print("")
-    print("wait 3 seconds for oven to cooldown")
-    time.sleep(1)
-    print("...")
-    time.sleep(1)
-    print("...")
-    time.sleep(1)
-    print("...")
-    print("wait for oven cooldown Complete")
-    print("")
-
-    # Setup the bake and save the output, rt-alpha
+    return
+    
+    
+def alpha_bake(link, alpha, output, nodeGroup, rt_alpha, alpha_img):
     link(alpha.outputs[0],output.inputs[0])
     nodeGroup.nodes.active.select = False
     nodeGroup.nodes.active = rt_alpha
@@ -94,10 +70,11 @@ def full_bake_script(self, context):
     print("rt-alpha Setup Complete, starting Bake...")
     BAKE(nodeGroup)
     alpha_img.save()
-    print("rt-alpha Image Saved")
+    print("rt-alpha Image Saved.")
     print("")
-
-    # Reload results, render and save final texture
+    
+    
+def final_texture_render(result_filepath):
     print("Reloading before Render...")
     bpy.data.images['rt-alpha'].reload()
     bpy.data.images['rt-rgb'].reload()
@@ -106,8 +83,35 @@ def full_bake_script(self, context):
     bpy.data.images['Render Result'].save_render(result_filepath)
     print("Render Saved.")
     bpy.data.images['island-basic-final-texture.png'].reload()
+
+
+def BAKE(nodeGroup):
+    bpy.ops.object.bake(type='DIFFUSE')
+    print("{}'s Bake Complete...".format(nodeGroup.nodes.active.name))
+    return
+
+
+def full_bake():
+    
+    nodeGroup, output, color, rt_rgb, rgb_img, alpha, rt_alpha, alpha_img, result_filepath, link = setup()
+    
+    print("")
+    print("-----------------------------------------------------------")
+    print("Starting Full Bake Process:")
+    print("")
+    
+    # Setup the bake and save the output, rt-rgb
+    rgb_bake(link, color, output, nodeGroup, rt_rgb, rgb_img)
+
+    # Setup the bake and save the output, rt-alpha
+    alpha_bake(link, alpha, output, nodeGroup, rt_alpha, alpha_img)
+
+    # Reload results, render and save final texture
+    final_texture_render(result_filepath)
+    
     print("")
     print("Full Bake Process Complete!")
+    print("-----------------------------------------------------------")
     print("")
 
 
@@ -136,7 +140,7 @@ class TextureBakery(Operator):
     bl_options = {'REGISTER'}
 
     def execute(self, context):
-        full_bake_script(self, context)
+        full_bake()
         return {'FINISHED'}
 
 # store keymaps here to access after registration

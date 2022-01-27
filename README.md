@@ -8,7 +8,7 @@ This addon helps make the development of a specific texture baking much easier.
 3. Enable the addon titled "System: Texture Bakery"
 
 ## Usage ##
-To bake the textures, fully or at various stages, use the helpful ui provided.
+To bake the textures, fully or at various stages, use the helpful UI provided.
 * Look in Properties > Scene > Texture Bakery and press any of the buttons related to baking.
 * Press (OSKey + Shift + B) to fully bake.
 
