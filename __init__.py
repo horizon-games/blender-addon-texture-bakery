@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Texture Bakery",
     "author": "Timmith Dysinski",
-    "version": (1, 0, 2),
+    "version": (1, 0, 3),
     "blender": (2, 93, 0),
     "location": "Properties > Scene > Texture Bakery",
     "description": "Helps shortcut the rigorous process of baking textures with some helpful UI",
@@ -18,17 +18,23 @@ from bpy.types import Operator
 def setup():
     # Variable Setup
     nodeGroup = bpy.data.node_groups['NodeGroup.001']
-    output = nodeGroup.nodes['Group Output']
 
-    color = nodeGroup.nodes['rgb-maker']
+    rgb_maker = nodeGroup.nodes['rgb-maker']
     rt_rgb = nodeGroup.nodes['Image Texture.001']
     rgb_png = bpy.data.images.get('rt-rgb')
 
-    alpha = nodeGroup.nodes['alpha-maker']
+    alpha_maker = nodeGroup.nodes['alpha-maker']
     rt_alpha = nodeGroup.nodes['Image Texture.004']
     alpha_png = bpy.data.images.get('rt-alpha')
 
-    result_filepath = bpy.data.images['island-basic-final-texture.png'].filepath_from_user()
+    substring = '-final-texture.png'
+    for i in bpy.data.images.keys():
+        if substring in i:
+            final_texture_filename = i
+    result_filepath = bpy.data.images[final_texture_filename].filepath_from_user()
+    
+    final_preview = nodeGroup.nodes['Node'].outputs[0]
+    output = nodeGroup.nodes['Group Output'].inputs[0]
 
     # Function Setup
     link = nodeGroup.links.new
@@ -46,24 +52,41 @@ def setup():
     # Ensure that Active Material Index is set to 'base'
     bpy.data.objects['surface'].active_material_index = 0
     
-    return nodeGroup, output, color, rt_rgb, rgb_png, alpha, rt_alpha, alpha_png, result_filepath, link
+    return nodeGroup, output, rgb_maker, rt_rgb, rgb_png, alpha_maker, rt_alpha, alpha_png, result_filepath, final_preview, link
 
 
-def rgb_bake(link, color, output, nodeGroup, rt_rgb, rgb_png):
-    link(color.outputs[0],output.inputs[0])
+def rgb_bake(link, rgb_maker, output, nodeGroup, rt_rgb, rgb_png):
+    link(rgb_maker.outputs[0],output)
     nodeGroup.nodes.active.select = False
     nodeGroup.nodes.active = rt_rgb
     nodeGroup.nodes.active.select = True
+
+    # all images (from PSD) post export and post clean (defringer), 
+    # set the alphaMode to NONE before rgb bake 
+    substring = '-clean'
+    for i in bpy.data.images.keys():
+        if substring in i:
+            bpy.data.images[i].alpha_mode = 'NONE'
+            print(i+"'s alpha_mode switched to NONE")
+
     print("rt-rgb Setup Complete, starting Bake...")
     BAKE(nodeGroup)
     rgb_png.save()
+
+    # and set back to STRAIGHT for alpha bake
+    for i in bpy.data.images.keys():
+        if substring in i:
+            bpy.data.images[i].alpha_mode = 'STRAIGHT'
+            print(i+"'s alpha_mode switched back to STRAIGHT")
+
     print("'rt-rgb.png' Saved.")
+    link(rt_rgb.outputs[0],output)
     print("")
     return
 
 
-def alpha_bake(link, alpha, output, nodeGroup, rt_alpha, alpha_png):
-    link(alpha.outputs[0],output.inputs[0])
+def alpha_bake(link, alpha_maker, output, nodeGroup, rt_alpha, alpha_png):
+    link(alpha_maker.outputs[0],output)
     nodeGroup.nodes.active.select = False
     nodeGroup.nodes.active = rt_alpha
     nodeGroup.nodes.active.select = True
@@ -71,11 +94,12 @@ def alpha_bake(link, alpha, output, nodeGroup, rt_alpha, alpha_png):
     BAKE(nodeGroup)
     alpha_png.save()
     print("'rt-alpha.png' Saved.")
+    link(rt_alpha.outputs[0],output)
     print("")
     return
 
-
-def final_texture_render(result_filepath):
+# DEPRECATED!!
+def final_texture_render(output, result_filepath, final_preview, link):
     print("Reloading before Render...")
     bpy.data.images['rt-alpha'].reload()
     bpy.data.images['rt-rgb'].reload()
@@ -85,6 +109,7 @@ def final_texture_render(result_filepath):
     bpy.data.images['Render Result'].save_render(result_filepath)
     print("'island-basic-final-texture.png' Saved.")
     bpy.data.images['island-basic-final-texture.png'].reload()
+    link(final_preview, output)
     print("")
     return
 
@@ -94,7 +119,7 @@ def BAKE(nodeGroup):
     print("{}'s Bake Complete...".format(nodeGroup.nodes.active.name))
     return
 
-
+# DEPRECATED!!
 def full_bake():
     print("")
     print("-----------------------------------------------------------")
@@ -102,16 +127,16 @@ def full_bake():
     print("")
     
     # Initial Setup
-    nodeGroup, output, color, rt_rgb, rgb_png, alpha, rt_alpha, alpha_png, result_filepath, link = setup()
+    nodeGroup, output, rgb_maker, rt_rgb, rgb_png, alpha_maker, rt_alpha, alpha_png, result_filepath, final_preview, link = setup()
     
     # Setup the bake and save the output, rt-rgb
-    rgb_bake(link, color, output, nodeGroup, rt_rgb, rgb_png)
+    rgb_bake(link, rgb_maker, output, nodeGroup, rt_rgb, rgb_png)
 
     # Setup the bake and save the output, rt-alpha
-    alpha_bake(link, alpha, output, nodeGroup, rt_alpha, alpha_png)
+    alpha_bake(link, alpha_maker, output, nodeGroup, rt_alpha, alpha_png)
 
     # Reload results, render and save final texture
-    final_texture_render(result_filepath)
+    final_texture_render(output, result_filepath, final_preview, link)
     
     print("Full Bake Process Complete!")
     print("-----------------------------------------------------------")
@@ -130,14 +155,14 @@ class TextureBakeryUI(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        row = layout.row()
-        row.scale_y = 2.0
-        row.operator("texture_bakery.full_bake")
+        # row = layout.row()
+        # row.scale_y = 2.0
+        # row.operator("texture_bakery.full_bake")
         row = layout.row()
         row.operator("texture_bakery.rgb_bake")
         row.operator("texture_bakery.alpha_bake")
-        row = layout.row()
-        row.operator("texture_bakery.final_texture_render")
+        # row = layout.row()
+        # row.operator("texture_bakery.final_texture_render")
 
 class FullBake(Operator):
     bl_idname = "texture_bakery.full_bake"
@@ -155,8 +180,8 @@ class rgbBake(Operator):
     bl_options = {'REGISTER'}
 
     def execute(self, context):
-        nodeGroup, output, color, rt_rgb, rgb_png, alpha, rt_alpha, alpha_png, result_filepath, link = setup()
-        rgb_bake(link, color, output, nodeGroup, rt_rgb, rgb_png)
+        nodeGroup, output, rgb_maker, rt_rgb, rgb_png, alpha_maker, rt_alpha, alpha_png, result_filepath, final_preview, link = setup()
+        rgb_bake(link, rgb_maker, output, nodeGroup, rt_rgb, rgb_png)
         return {'FINISHED'}
 
 
@@ -166,8 +191,8 @@ class alphaBake(Operator):
     bl_options = {'REGISTER'}
 
     def execute(self, context):
-        nodeGroup, output, color, rt_rgb, rgb_png, alpha, rt_alpha, alpha_png, result_filepath, link = setup()
-        alpha_bake(link, alpha, output, nodeGroup, rt_alpha, alpha_png)
+        nodeGroup, output, rgb_maker, rt_rgb, rgb_png, alpha_maker, rt_alpha, alpha_png, result_filepath, final_preview, link = setup()
+        alpha_bake(link, alpha_maker, output, nodeGroup, rt_alpha, alpha_png)
         return {'FINISHED'}
 
 
@@ -177,8 +202,8 @@ class FinalTextureRender(Operator):
     bl_options = {'REGISTER'}
 
     def execute(self, context):
-        nodeGroup, output, color, rt_rgb, rgb_png, alpha, rt_alpha, alpha_png, result_filepath, link = setup()
-        final_texture_render(result_filepath)
+        nodeGroup, output, rgb_maker, rt_rgb, rgb_png, alpha_maker, rt_alpha, alpha_png, result_filepath, final_preview, link = setup()
+        final_texture_render(output, result_filepath, final_preview, link)
         return {'FINISHED'}
 
 
@@ -187,10 +212,10 @@ addon_keymaps = []
 
 def register():
     bpy.utils.register_class(TextureBakeryUI)
-    bpy.utils.register_class(FullBake)
+    # bpy.utils.register_class(FullBake)
     bpy.utils.register_class(rgbBake)
     bpy.utils.register_class(alphaBake)
-    bpy.utils.register_class(FinalTextureRender)
+    # bpy.utils.register_class(FinalTextureRender)
 
     # Handle the keymap
     wm = bpy.context.window_manager
@@ -201,10 +226,10 @@ def register():
 
 def unregister():
     bpy.utils.unregister_class(TextureBakeryUI)
-    bpy.utils.unregister_class(FullBake)
+    # bpy.utils.unregister_class(FullBake)
     bpy.utils.unregister_class(rgbBake)
     bpy.utils.unregister_class(alphaBake)
-    bpy.utils.unregister_class(FinalTextureRender)
+    # bpy.utils.unregister_class(FinalTextureRender)
 
     # Handle the keymap
     for km, kmi in addon_keymaps:
